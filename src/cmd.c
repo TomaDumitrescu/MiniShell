@@ -18,9 +18,7 @@
  */
 static bool shell_cd(word_t *dir)
 {
-	/* TODO: Execute cd. */
-
-	return 0;
+	return dir && dir->string && chdir(dir->string) == 0;
 }
 
 /**
@@ -28,9 +26,7 @@ static bool shell_cd(word_t *dir)
  */
 static int shell_exit(void)
 {
-	/* TODO: Execute exit/quit. */
-
-	return 0; /* TODO: Replace with actual exit code. */
+	return SHELL_EXIT;
 }
 
 /**
@@ -66,7 +62,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 {
 	/* TODO: Execute cmd1 and cmd2 simultaneously. */
 
-	return true; /* TODO: Replace with actual exit status. */
+	/* TODO: Replace with actual exit status. (cmd2 exit status) */
 }
 
 /**
@@ -77,7 +73,7 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 {
 	/* TODO: Redirect the output of cmd1 to the input of cmd2. */
 
-	return true; /* TODO: Replace with actual exit status. */
+	/* TODO: Replace with actual exit status. (cmd2 exit status) */
 }
 
 /**
@@ -85,44 +81,59 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
  */
 int parse_command(command_t *c, int level, command_t *father)
 {
-	/* TODO: sanity checks */
+	int result = ERROR_CODE;
 
-	if (c->op == OP_NONE) {
-		/* TODO: Execute a simple command. */
+	if (!c || level < 0)
+		return result;
 
-		return 0; /* TODO: Replace with actual exit code of command. */
-	}
-
+	/* TODO: Execute a simple command. */
 	switch (c->op) {
+	case OP_NONE:
+		result = parse_simple(c->scmd, level, father);
+		break;
 	case OP_SEQUENTIAL:
 		/* TODO: Execute the commands one after the other. */
+		result = parse_command(c->cmd1, level + 1, c);
+		result = parse_command(c->cmd2, level + 1, c);
 		break;
 
 	case OP_PARALLEL:
 		/* TODO: Execute the commands simultaneously. */
+		result = run_in_parallel(c->cmd1, c->cmd2, level + 1, c);
 		break;
 
 	case OP_CONDITIONAL_NZERO:
 		/* TODO: Execute the second command only if the first one
 		 * returns non zero.
 		 */
+		result = parse_command(c->cmd1, level + 1, c);
+		if (result != 0)
+			result = parse_command(c->cmd2, level + 1, c);
 		break;
 
 	case OP_CONDITIONAL_ZERO:
 		/* TODO: Execute the second command only if the first one
 		 * returns zero.
 		 */
+		result = parse_command(c->cmd1, level + 1, c);
+		if (result == 0)
+			result = parse_command(c->cmd2, level + 1, c);
 		break;
 
 	case OP_PIPE:
 		/* TODO: Redirect the output of the first command to the
 		 * input of the second.
 		 */
+		result = run_on_pipe(c->cmd1, c->cmd2, level + 1, c);
+		break;
+	
+	case OP_DUMMY:
+		result = 0;
 		break;
 
 	default:
-		return SHELL_EXIT;
+		result = SHELL_EXIT;
 	}
 
-	return 0; /* TODO: Replace with actual exit code of command. */
+	return result; /* TODO: Replace with actual exit code of command. */
 }

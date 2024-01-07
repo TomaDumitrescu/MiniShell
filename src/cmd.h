@@ -5,6 +5,7 @@
 
 #include "../util/parser/parser.h"
 
+#define ERROR_CODE -1
 #define SHELL_EXIT -100
 
 /**
