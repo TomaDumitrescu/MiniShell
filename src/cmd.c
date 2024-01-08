@@ -192,9 +192,45 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 		command_t *father)
 {
-	/* TODO: Execute cmd1 and cmd2 simultaneously. */
+	/*
+	 * Running the commands in parallel will result in the following process tree:
+	 * initial_process - cmd1_process -> exit
+	 *				   - initial process - cmd2_process -> exit
+	 *									 - initial process -> wait for cmd1, cmd 2 and return
+	 */
 
-	return true; /* TODO: Replace with actual exit status. */
+	pid_t cmd1_pid = fork();
+	int cmd1_status, cmd2_status;
+
+	switch (cmd1_pid) {
+	case ERROR:
+		DIE(true, "fork");
+		break;
+	case CHILD:
+		// the exit code of the process is the result code of parse_command
+		exit(parse_command(cmd1, level, father));
+		break;
+	}
+
+	// This code is accessed only by initial_process, the parent of cmd1_process
+	pid_t cmd2_pid = fork();
+
+	switch (cmd2_pid) {
+	case ERROR:
+		DIE(true, "fork");
+		break;
+	case CHILD:
+		exit(parse_command(cmd2, level, father));
+		break;
+	default:
+		// the parent of cmd2_process will wait for both processes
+		DIE(waitpid(cmd1_pid, &cmd1_status, DEFAULT_OPTIONS) == ERROR, "waitpid");
+		DIE(waitpid(cmd2_pid, &cmd2_status, DEFAULT_OPTIONS) == ERROR, "waitpid");
+	}
+
+	// both cmd1 and cmd2 result code counts to the final result code
+	return !(__WIFEXITED(cmd1_status) && __WEXITSTATUS(cmd1_status) == SUCCESS
+		   && __WIFEXITED(cmd2_status) && __WEXITSTATUS(cmd2_status) == SUCCESS);
 }
 
 /**
@@ -205,6 +241,7 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 {
 	// creating a pipe
 	int pipe_channel[2];
+
 	if (pipe(pipe_channel) != SUCCESS)
 		return true;
 
@@ -228,6 +265,7 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 
 	pid_t cmd2_pid = fork();
 	int cmd2_status;
+
 	switch (cmd2_pid) {
 	case ERROR:
 		DIE(close(pipe_channel[READ]) != SUCCESS, "close");
@@ -252,8 +290,9 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 	DIE(waitpid(cmd1_pid, &cmd1_status, DEFAULT_OPTIONS) == ERROR, "waitpit");
 	DIE(waitpid(cmd2_pid, &cmd2_status, DEFAULT_OPTIONS) == ERROR, "waitpid");
 
-	/* only the cmd2 exit code matters, taking the negated value of the result code,
-	because run_on_pipe succeeds when returning false (success code) */
+	/** only the cmd2 exit code matters, taking the negated value of the result code,
+	 * because run_on_pipe succeeds when returning false (success code)
+	 */
 	return !(__WIFEXITED(cmd2_status) && __WEXITSTATUS(cmd2_status) == SUCCESS);
 }
 
