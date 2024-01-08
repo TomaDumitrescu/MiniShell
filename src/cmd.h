@@ -4,9 +4,13 @@
 #define _CMD_H
 
 #include "../util/parser/parser.h"
+#include <string.h>
 
-#define ERROR_CODE -1
 #define SHELL_EXIT -100
+#define ERROR -1
+#define COMMON_PERM S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH
+#define ARG_LEN 30
+#define DEFAULT_BEHAVIOR 1
 
 /**
  * Parse and execute a command.

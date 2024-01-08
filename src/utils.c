@@ -7,6 +7,22 @@
 #include "utils.h"
 
 /**
+ * Counts the number of parts in a word
+*/
+int word_count(word_t *s)
+{
+	int num = 0;
+
+	word_t *search = s;
+	while (!search) {
+		search = search->next_word;
+		num++;
+	}
+
+	return num;
+}
+
+/**
  * Concatenate parts of the word to obtain the command.
  */
 char *get_word(word_t *s)

@@ -30,28 +30,126 @@ static int shell_exit(void)
 }
 
 /**
+ * Redirect for in, out, err
+ */
+static void do_redirect(word_t *file, int file_dest, bool append, bool in,
+						word_t *file2, int file_dest2, bool append2, int *stop)
+{
+	if (!file || !file->string || *stop == 1)
+		return;
+	
+	int fd;
+	
+	if (file2 && strcmp(file->string, file2->string) == 0) {
+		if (append || append2)
+			fd = open(file->string, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
+		else
+			fd = open(file->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
+		
+		DIE(fd < 0, "open");
+		DIE(dup2(fd, file_dest) < 0, "dup2");
+		DIE(dup2(fd, file_dest2) < 0, "dup2");
+		DIE(close(fd) != 0, "close");
+
+		*stop = 1;
+		return;
+	}
+
+	if (!append && !in)
+		fd = open(file->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
+	else if (!in)
+		fd = open(file->string, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
+	else
+		fd = open(file->string, O_RDONLY, COMMON_PERM);
+
+	DIE(fd < 0, "open");
+	DIE(dup2(fd, file_dest) < 0, "dup2");
+	DIE(close(fd) != 0, "close");
+} 
+
+/**
  * Parse a simple command (internal, environment variable assignment,
  * external command).
  */
 static int parse_simple(simple_command_t *s, int level, command_t *father)
 {
-	/* TODO: Sanity checks. */
+	if (!s || !s->verb)
+		return ERROR;
 
-	/* TODO: If builtin command, execute the command. */
+	word_t *verb = s->verb;
+
+	if (verb->string && strncmp("cd", verb->string, strlen("cd")) == 0) {
+		if (s->out) {
+			int fd = open(s->out->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
+			DIE(fd < 0, "open");
+			DIE(close(fd) != 0, "close");
+		}
+
+		if (s->err) {
+			int fd = open(s->err->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
+			DIE(fd < 0, "open");
+			DIE(close(fd) != 0, "close");
+		}
+
+		return shell_cd(s->params);
+	}
+
+	if (verb->string && (!strncmp("quit", verb->string, strlen("quit"))
+		|| !strncmp("exit", verb->string, strlen("exit")))) {
+			return shell_exit();
+		}
+
 
 	/* TODO: If variable assignment, execute the assignment and return
 	 * the exit status.
 	 */
 
-	/* TODO: If external command:
-	 *   1. Fork new process
-	 *     2c. Perform redirections in child
-	 *     3c. Load executable in child
-	 *   2. Wait for child
-	 *   3. Return exit status
-	 */
+	word_t *assignment = s->verb;
+	if (assignment && assignment->next_part && assignment->next_part->next_part
+		&& strcmp(assignment->next_part->string, "=") == 0) {
+		char *last_part = get_word(assignment->next_part->next_part);
+		char *value = strdup(last_part);
 
-	return 0; /* TODO: Replace with actual exit status. */
+		if (last_part[0] == '$') {
+			free(value);
+			value = getenv(assignment->string);
+		}
+
+		setenv(s->verb->string, value, DEFAULT_BEHAVIOR);
+		free(last_part);
+
+		return 0;
+	}
+
+	pid_t pid;
+	int status, argc;
+
+	pid = fork();
+	switch(pid) {
+		case -1:
+			DIE(true, "fork");
+			break;
+		case 0:
+			;	// label error
+			int stop = 0;
+			do_redirect(s->in, STDIN_FILENO, false, true, NULL, -1, false, &stop);
+			do_redirect(s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false, s->err,
+						STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
+			do_redirect(s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false, NULL,
+						-1, false, &stop);
+
+			char **args = get_argv(s, &argc);
+			int result = execvp(args[0], (char *const *)args);
+			DIE(result == ERROR, "execvp");
+			return result;
+			break;
+		default:
+			DIE(waitpid(pid, &status, 0) < 0, "waitpid");
+			if (__WIFEXITED(status))
+				return __WEXITSTATUS(status);
+	}
+
+	return 0;
 }
 
 /**
@@ -62,7 +160,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 {
 	/* TODO: Execute cmd1 and cmd2 simultaneously. */
 
-	/* TODO: Replace with actual exit status. (cmd2 exit status) */
+	return true; /* TODO: Replace with actual exit status. */
 }
 
 /**
@@ -73,7 +171,7 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 {
 	/* TODO: Redirect the output of cmd1 to the input of cmd2. */
 
-	/* TODO: Replace with actual exit status. (cmd2 exit status) */
+	return true; /* TODO: Replace with actual exit status. */
 }
 
 /**
@@ -81,59 +179,47 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
  */
 int parse_command(command_t *c, int level, command_t *father)
 {
-	int result = ERROR_CODE;
+	int cmd_exit = 0;
 
 	if (!c || level < 0)
-		return result;
+		return ERROR;
 
-	/* TODO: Execute a simple command. */
 	switch (c->op) {
 	case OP_NONE:
-		result = parse_simple(c->scmd, level, father);
+		cmd_exit = parse_simple(c->scmd, level, father);
 		break;
 	case OP_SEQUENTIAL:
-		/* TODO: Execute the commands one after the other. */
-		result = parse_command(c->cmd1, level + 1, c);
-		result = parse_command(c->cmd2, level + 1, c);
+		cmd_exit = parse_command(c->cmd1, level + 1, c);
+		cmd_exit = parse_command(c->cmd2, level + 1, c);
 		break;
 
 	case OP_PARALLEL:
-		/* TODO: Execute the commands simultaneously. */
-		result = run_in_parallel(c->cmd1, c->cmd2, level + 1, c);
+		cmd_exit = run_in_parallel(c->cmd1, c->cmd2, level + 1, c);
 		break;
 
 	case OP_CONDITIONAL_NZERO:
-		/* TODO: Execute the second command only if the first one
-		 * returns non zero.
-		 */
-		result = parse_command(c->cmd1, level + 1, c);
-		if (result != 0)
-			result = parse_command(c->cmd2, level + 1, c);
+		cmd_exit = parse_command(c->cmd1, level + 1, c);
+		if (cmd_exit != 0)
+			cmd_exit = parse_command(c->cmd2, level + 1, c);
 		break;
 
 	case OP_CONDITIONAL_ZERO:
-		/* TODO: Execute the second command only if the first one
-		 * returns zero.
-		 */
-		result = parse_command(c->cmd1, level + 1, c);
-		if (result == 0)
-			result = parse_command(c->cmd2, level + 1, c);
+		cmd_exit = parse_command(c->cmd1, level + 1, c);
+		if (cmd_exit == 0)
+			cmd_exit = parse_command(c->cmd2, level + 1, c);
 		break;
 
 	case OP_PIPE:
-		/* TODO: Redirect the output of the first command to the
-		 * input of the second.
-		 */
-		result = run_on_pipe(c->cmd1, c->cmd2, level + 1, c);
+		cmd_exit = run_on_pipe(c->cmd1, c->cmd2, level + 1, c);
 		break;
 	
 	case OP_DUMMY:
-		result = 0;
+		cmd_exit = 0;
 		break;
 
 	default:
-		result = SHELL_EXIT;
+		cmd_exit = SHELL_EXIT;
 	}
 
-	return result; /* TODO: Replace with actual exit code of command. */
+	return cmd_exit;
 }
