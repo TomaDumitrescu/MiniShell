@@ -18,6 +18,7 @@
  */
 static bool shell_cd(word_t *dir)
 {
+	// logical short-circuiting
 	return dir && dir->string && chdir(dir->string) == 0;
 }
 
@@ -32,7 +33,7 @@ static int shell_exit(void)
 /**
  * Redirect for in, out, err
  */
-static void do_redirect(word_t *file, int file_dest, bool append, bool in,
+static void do_redirect(bool act_redirect, word_t *file, int file_dest, bool append, bool in,
 						word_t *file2, int file_dest2, bool append2, int *stop)
 {
 	if (!file || !file->string || *stop == 1)
@@ -40,6 +41,7 @@ static void do_redirect(word_t *file, int file_dest, bool append, bool in,
 	
 	int fd;
 	
+	// &> redirection type
 	if (file2 && strcmp(file->string, file2->string) == 0) {
 		if (append || append2)
 			fd = open(file->string, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
@@ -47,11 +49,15 @@ static void do_redirect(word_t *file, int file_dest, bool append, bool in,
 			fd = open(file->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
 		
 		DIE(fd < 0, "open");
-		DIE(dup2(fd, file_dest) < 0, "dup2");
-		DIE(dup2(fd, file_dest2) < 0, "dup2");
+		if (act_redirect) {
+			DIE(dup2(fd, file_dest) < 0, "dup2");
+			DIE(dup2(fd, file_dest2) < 0, "dup2");
+		}
 		DIE(close(fd) != 0, "close");
 
+		// block the following do_redirect for stderr
 		*stop = 1;
+
 		return;
 	}
 
@@ -63,7 +69,9 @@ static void do_redirect(word_t *file, int file_dest, bool append, bool in,
 		fd = open(file->string, O_RDONLY, COMMON_PERM);
 
 	DIE(fd < 0, "open");
-	DIE(dup2(fd, file_dest) < 0, "dup2");
+	// redirect method
+	if (act_redirect)
+		DIE(dup2(fd, file_dest) < 0, "dup2");
 	DIE(close(fd) != 0, "close");
 } 
 
@@ -79,11 +87,13 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	word_t *verb = s->verb;
 
 	if (verb->string && strncmp("cd", verb->string, strlen("cd")) == 0) {
-		if (s->out) {
-			int fd = open(s->out->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
-			DIE(fd < 0, "open");
-			DIE(close(fd) != 0, "close");
-		}
+		int stop = 0;
+
+		// cd and redirect to files => junk files
+		do_redirect(false, s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false,
+					s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
+		do_redirect(false, s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false,
+					s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, &stop);
 
 		if (s->err) {
 			int fd = open(s->err->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
@@ -91,18 +101,13 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 			DIE(close(fd) != 0, "close");
 		}
 
-		return shell_cd(s->params);
+		return !shell_cd(s->params);
 	}
 
 	if (verb->string && (!strncmp("quit", verb->string, strlen("quit"))
 		|| !strncmp("exit", verb->string, strlen("exit")))) {
 			return shell_exit();
 		}
-
-
-	/* TODO: If variable assignment, execute the assignment and return
-	 * the exit status.
-	 */
 
 	word_t *assignment = s->verb;
 	if (assignment && assignment->next_part && assignment->next_part->next_part
@@ -132,15 +137,16 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		case 0:
 			;	// label error
 			int stop = 0;
-			do_redirect(s->in, STDIN_FILENO, false, true, NULL, -1, false, &stop);
-			do_redirect(s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false, s->err,
+			do_redirect(true, s->in, STDIN_FILENO, false, true, NULL, -1, false, &stop);
+			do_redirect(true, s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false, s->err,
 						STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
-			do_redirect(s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false, NULL,
+			do_redirect(true, s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false, NULL,
 						-1, false, &stop);
 
 			char **args = get_argv(s, &argc);
 			int result = execvp(args[0], (char *const *)args);
-			DIE(result == ERROR, "execvp");
+			if (result != ERROR)
+				result = 0;
 			return result;
 			break;
 		default:

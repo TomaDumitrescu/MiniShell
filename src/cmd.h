@@ -7,9 +7,14 @@
 #include <string.h>
 
 #define SHELL_EXIT -100
+
+// error code for a command
 #define ERROR -1
+
+// permissions given to the file by a redirect open syscall in linux shell
 #define COMMON_PERM S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH
-#define ARG_LEN 30
+
+// for set_env, creating a new variable or reassign it flag
 #define DEFAULT_BEHAVIOR 1
 
 /**
