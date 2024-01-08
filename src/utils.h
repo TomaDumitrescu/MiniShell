@@ -3,9 +3,10 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 
-#include "../util/parser/parser.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "../util/parser/parser.h"
 
 #define EXIT_FAILURE 1
 

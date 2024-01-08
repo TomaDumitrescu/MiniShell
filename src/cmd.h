@@ -3,8 +3,9 @@
 #ifndef _CMD_H
 #define _CMD_H
 
-#include "../util/parser/parser.h"
 #include <string.h>
+
+#include "../util/parser/parser.h"
 
 #define SHELL_EXIT -100
 

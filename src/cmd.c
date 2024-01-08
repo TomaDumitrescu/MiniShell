@@ -38,16 +38,16 @@ static void do_redirect(bool act_redirect, word_t *file, int file_dest, bool app
 {
 	if (!file || !file->string || *stop == 1)
 		return;
-	
+
 	int fd;
-	
+
 	// &> redirection type
 	if (file2 && strcmp(file->string, file2->string) == 0) {
 		if (append || append2)
 			fd = open(file->string, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
 		else
 			fd = open(file->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
-		
+
 		DIE(fd < 0, "open");
 		if (act_redirect) {
 			DIE(dup2(fd, file_dest) < 0, "dup2");
@@ -73,7 +73,7 @@ static void do_redirect(bool act_redirect, word_t *file, int file_dest, bool app
 	if (act_redirect)
 		DIE(dup2(fd, file_dest) < 0, "dup2");
 	DIE(close(fd) != 0, "close");
-} 
+}
 
 /**
  * Parse a simple command (internal, environment variable assignment,
@@ -97,6 +97,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 
 		if (s->err) {
 			int fd = open(s->err->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
+
 			DIE(fd < 0, "open");
 			DIE(close(fd) != 0, "close");
 		}
@@ -105,12 +106,12 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		return !shell_cd(s->params);
 	}
 
-	if (verb->string && (!strncmp("quit", verb->string, strlen("quit"))
-		|| !strncmp("exit", verb->string, strlen("exit")))) {
-			return shell_exit();
-		}
+	if (verb->string && !strncmp("quit", verb->string, strlen("quit"))
+		|| !strncmp("exit", verb->string, strlen("exit")))
+		return shell_exit();
 
 	word_t *assignment = s->verb;
+
 	if (assignment && assignment->next_part && assignment->next_part->next_part
 		&& strcmp(assignment->next_part->string, "=") == 0) {
 		char *last_part = get_word(assignment->next_part->next_part);
@@ -135,37 +136,39 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 
 	// forking the process
 	pid = fork();
-	switch(pid) {
-		case -1:
-			DIE(true, "fork");
-			break;
-		case 0:
-			;	// label error
-			int stop = 0;
-			do_redirect(true, s->in, STDIN_FILENO, false, true, NULL, -1, false, &stop);
-			do_redirect(true, s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false, s->err,
-						STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
-			do_redirect(true, s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false, NULL,
-						-1, false, &stop);
-			
-			// setting the arguments
-			char **args = get_argv(s, &argc);
+	switch (pid) {
+	case -1:
+		DIE(true, "fork");
+		break;
+	case 0:
+		;	// label error
+		int stop = 0;
 
-			// execute the string command
-			int result = execvp(args[0], (char *const *)args);
-			if (result == ERROR) {
-				fprintf(stderr, "Execution failed for '%s'\n", s->verb->string);
-				exit(ERROR);
-			}
+		do_redirect(true, s->in, STDIN_FILENO, false, true, NULL, -1, false, &stop);
+		do_redirect(true, s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false, s->err,
+					STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
+		do_redirect(true, s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false, NULL,
+					-1, false, &stop);
 
-			return SUCCESS;
-		default:
-			// parent process waiting for the child
-			DIE(waitpid(pid, &status, 0) < 0, "waitpid");
+		// setting the arguments
+		char **args = get_argv(s, &argc);
 
-			// command exit code is equal to process exit code
-			if (__WIFEXITED(status))
-				return __WEXITSTATUS(status);
+		// execute the string command
+		int result = execvp(args[0], (char *const *)args);
+
+		if (result == ERROR) {
+			fprintf(stderr, "Execution failed for '%s'\n", s->verb->string);
+			exit(ERROR);
+		}
+
+		return SUCCESS;
+	default:
+		// parent process waiting for the child
+		DIE(waitpid(pid, &status, 0) < 0, "waitpid");
+
+		// command exit code is equal to process exit code
+		if (__WIFEXITED(status))
+			return __WEXITSTATUS(status);
 	}
 
 	return SUCCESS;
@@ -231,7 +234,7 @@ int parse_command(command_t *c, int level, command_t *father)
 	case OP_PIPE:
 		cmd_exit = run_on_pipe(c->cmd1, c->cmd2, level + 1, c);
 		break;
-	
+
 	case OP_DUMMY:
 		cmd_exit = ERROR;
 		break;
