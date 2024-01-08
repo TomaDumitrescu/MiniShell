@@ -11,6 +11,9 @@
 // error code for a command
 #define ERROR -1
 
+// success code for a command
+#define SUCCESS 0
+
 // permissions given to the file by a redirect open syscall in linux shell
 #define COMMON_PERM S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH
 

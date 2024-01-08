@@ -89,7 +89,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	if (verb->string && strncmp("cd", verb->string, strlen("cd")) == 0) {
 		int stop = 0;
 
-		// cd and redirect to files => junk files
+		// minishell cd and redirect to files produce only junk files
 		do_redirect(false, s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false,
 					s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
 		do_redirect(false, s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false,
@@ -101,6 +101,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 			DIE(close(fd) != 0, "close");
 		}
 
+		// negation due to the fact that returns true when a directory is changed
 		return !shell_cd(s->params);
 	}
 
@@ -115,20 +116,24 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		char *last_part = get_word(assignment->next_part->next_part);
 		char *value = strdup(last_part);
 
+		// searching for the second environment variable and save its value
 		if (last_part[0] == '$') {
 			free(value);
-			value = getenv(assignment->string);
+			value = getenv(last_part + 1);
 		}
 
 		setenv(s->verb->string, value, DEFAULT_BEHAVIOR);
+
+		// last part is the result of get_word that allocates the concatenated string
 		free(last_part);
 
-		return 0;
+		return SUCCESS;
 	}
 
 	pid_t pid;
 	int status, argc;
 
+	// forking the process
 	pid = fork();
 	switch(pid) {
 		case -1:
@@ -142,20 +147,28 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 						STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
 			do_redirect(true, s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false, NULL,
 						-1, false, &stop);
-
+			
+			// setting the arguments
 			char **args = get_argv(s, &argc);
+
+			// execute the string command
 			int result = execvp(args[0], (char *const *)args);
-			if (result != ERROR)
-				result = 0;
-			return result;
-			break;
+			if (result == ERROR) {
+				fprintf(stderr, "Execution failed for '%s'\n", s->verb->string);
+				exit(ERROR);
+			}
+
+			return SUCCESS;
 		default:
+			// parent process waiting for the child
 			DIE(waitpid(pid, &status, 0) < 0, "waitpid");
+
+			// command exit code is equal to process exit code
 			if (__WIFEXITED(status))
 				return __WEXITSTATUS(status);
 	}
 
-	return 0;
+	return SUCCESS;
 }
 
 /**
@@ -185,7 +198,7 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
  */
 int parse_command(command_t *c, int level, command_t *father)
 {
-	int cmd_exit = 0;
+	int cmd_exit = ERROR;
 
 	if (!c || level < 0)
 		return ERROR;
@@ -205,7 +218,7 @@ int parse_command(command_t *c, int level, command_t *father)
 
 	case OP_CONDITIONAL_NZERO:
 		cmd_exit = parse_command(c->cmd1, level + 1, c);
-		if (cmd_exit != 0)
+		if (cmd_exit != SUCCESS)
 			cmd_exit = parse_command(c->cmd2, level + 1, c);
 		break;
 
@@ -220,7 +233,7 @@ int parse_command(command_t *c, int level, command_t *father)
 		break;
 	
 	case OP_DUMMY:
-		cmd_exit = 0;
+		cmd_exit = ERROR;
 		break;
 
 	default:
