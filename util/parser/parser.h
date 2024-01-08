@@ -115,7 +115,6 @@ typedef struct {
 	void *aux;
 } simple_command_t;
 
-
 /*
  * Operators
 

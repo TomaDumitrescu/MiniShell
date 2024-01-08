@@ -40,13 +40,14 @@ static void do_redirect(bool act_redirect, word_t *file, int file_dest, bool app
 		return;
 
 	int fd;
+	char *file_name = get_word(file), *file_name2 = get_word(file);
 
 	// &> redirection type
 	if (file2 && strcmp(file->string, file2->string) == 0) {
 		if (append || append2)
-			fd = open(file->string, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
+			fd = open(file_name, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
 		else
-			fd = open(file->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
+			fd = open(file_name2, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
 
 		DIE(fd < 0, "open");
 		if (act_redirect) {
@@ -58,15 +59,21 @@ static void do_redirect(bool act_redirect, word_t *file, int file_dest, bool app
 		// block the following do_redirect for stderr
 		*stop = 1;
 
+		free(file_name);
+		free(file_name2);
+
 		return;
 	}
 
 	if (!append && !in)
-		fd = open(file->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
+		fd = open(file_name, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
 	else if (!in)
-		fd = open(file->string, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
+		fd = open(file_name, O_CREAT | O_WRONLY | O_APPEND, COMMON_PERM);
 	else
-		fd = open(file->string, O_RDONLY, COMMON_PERM);
+		fd = open(file_name, O_RDONLY, COMMON_PERM);
+
+	free(file_name);
+	free(file_name2);
 
 	DIE(fd < 0, "open");
 	// redirect method
@@ -106,8 +113,8 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		return !shell_cd(s->params);
 	}
 
-	if (verb->string && !strncmp("quit", verb->string, strlen("quit"))
-		|| !strncmp("exit", verb->string, strlen("exit")))
+	if (verb->string && (!strncmp("quit", verb->string, strlen("quit"))
+		|| !strncmp("exit", verb->string, strlen("exit"))))
 		return shell_exit();
 
 	word_t *assignment = s->verb;
@@ -116,21 +123,26 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		&& strcmp(assignment->next_part->string, "=") == 0) {
 		char *last_part = get_word(assignment->next_part->next_part);
 		char *value = strdup(last_part);
+		bool valueChanged = false;
 
 		// searching for the second environment variable and save its value
 		if (last_part[0] == '$') {
 			free(value);
 			value = getenv(last_part + 1);
+			valueChanged = true;
 		}
 
 		setenv(s->verb->string, value, DEFAULT_BEHAVIOR);
 
 		// last part is the result of get_word that allocates the concatenated string
 		free(last_part);
+		if (!valueChanged)
+			free(value);
 
 		return SUCCESS;
 	}
 
+	// Initialize non-existent environment variables with '\0'
 	pid_t pid;
 	int status, argc;
 
