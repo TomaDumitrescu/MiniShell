@@ -21,6 +21,14 @@
 // for set_env, creating a new variable or reassign it flag
 #define DEFAULT_BEHAVIOR 1
 
+#define CHILD 0
+
+#define DEFAULT_OPTIONS 0
+
+#define JUNK_VALUE -1
+
+#define SKIP_DOLLAR 1
+
 /**
  * Parse and execute a command.
  */

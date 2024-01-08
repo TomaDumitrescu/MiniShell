@@ -19,7 +19,7 @@
 static bool shell_cd(word_t *dir)
 {
 	// logical short-circuiting
-	return dir && dir->string && chdir(dir->string) == 0;
+	return !(dir && dir->string && chdir(dir->string) == 0);
 }
 
 /**
@@ -51,10 +51,10 @@ static void do_redirect(bool act_redirect, word_t *file, int file_dest, bool app
 
 		DIE(fd < 0, "open");
 		if (act_redirect) {
-			DIE(dup2(fd, file_dest) < 0, "dup2");
-			DIE(dup2(fd, file_dest2) < 0, "dup2");
+			DIE(dup2(fd, file_dest) == ERROR, "dup2");
+			DIE(dup2(fd, file_dest2) == ERROR, "dup2");
 		}
-		DIE(close(fd) != 0, "close");
+		DIE(close(fd) != SUCCESS, "close");
 
 		// block the following do_redirect for stderr
 		*stop = 1;
@@ -78,8 +78,8 @@ static void do_redirect(bool act_redirect, word_t *file, int file_dest, bool app
 	DIE(fd < 0, "open");
 	// redirect method
 	if (act_redirect)
-		DIE(dup2(fd, file_dest) < 0, "dup2");
-	DIE(close(fd) != 0, "close");
+		DIE(dup2(fd, file_dest) == ERROR, "dup2");
+	DIE(close(fd) != SUCCESS, "close");
 }
 
 /**
@@ -106,11 +106,11 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 			int fd = open(s->err->string, O_CREAT | O_WRONLY | O_TRUNC, COMMON_PERM);
 
 			DIE(fd < 0, "open");
-			DIE(close(fd) != 0, "close");
+			DIE(close(fd) != SUCCESS, "close");
 		}
 
 		// negation due to the fact that returns true when a directory is changed
-		return !shell_cd(s->params);
+		return shell_cd(s->params);
 	}
 
 	if (verb->string && (!strncmp("quit", verb->string, strlen("quit"))
@@ -128,7 +128,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		// searching for the second environment variable and save its value
 		if (last_part[0] == '$') {
 			free(value);
-			value = getenv(last_part + 1);
+			value = getenv(last_part + SKIP_DOLLAR);
 			valueChanged = true;
 		}
 
@@ -149,18 +149,18 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	// forking the process
 	pid = fork();
 	switch (pid) {
-	case -1:
+	case ERROR:
 		DIE(true, "fork");
 		break;
-	case 0:
+	case CHILD:
 		;	// label error
 		int stop = 0;
 
-		do_redirect(true, s->in, STDIN_FILENO, false, true, NULL, -1, false, &stop);
+		do_redirect(true, s->in, STDIN_FILENO, false, true, NULL, JUNK_VALUE, false, &stop);
 		do_redirect(true, s->out, STDOUT_FILENO, s->io_flags & IO_OUT_APPEND, false, s->err,
 					STDERR_FILENO, s->io_flags & IO_ERR_APPEND, &stop);
 		do_redirect(true, s->err, STDERR_FILENO, s->io_flags & IO_ERR_APPEND, false, NULL,
-					-1, false, &stop);
+					JUNK_VALUE, false, &stop);
 
 		// setting the arguments
 		char **args = get_argv(s, &argc);
@@ -176,7 +176,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		return SUCCESS;
 	default:
 		// parent process waiting for the child
-		DIE(waitpid(pid, &status, 0) < 0, "waitpid");
+		DIE(waitpid(pid, &status, DEFAULT_OPTIONS) == ERROR, "waitpid");
 
 		// command exit code is equal to process exit code
 		if (__WIFEXITED(status))
@@ -203,9 +203,58 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 		command_t *father)
 {
-	/* TODO: Redirect the output of cmd1 to the input of cmd2. */
+	// creating a pipe
+	int pipe_channel[2];
+	if (pipe(pipe_channel) != SUCCESS)
+		return true;
 
-	return true; /* TODO: Replace with actual exit status. */
+	pid_t cmd1_pid = fork();
+	int cmd1_status;
+
+	// exit code of this process does not affect the pipe result code
+	switch (cmd1_pid) {
+	case ERROR:
+		DIE(close(pipe_channel[READ]) != SUCCESS, "close");
+		DIE(close(pipe_channel[WRITE]) != SUCCESS, "close");
+		DIE(true, "fork");
+	case CHILD:
+		DIE(close(pipe_channel[READ]) != SUCCESS, "close");
+		dup2(pipe_channel[WRITE], STDOUT_FILENO);
+		DIE(close(pipe_channel[WRITE]) != SUCCESS, "close");
+
+		// the exit code of the process is obtained from actually running command 1
+		exit(parse_command(cmd1, level, father));
+	}
+
+	pid_t cmd2_pid = fork();
+	int cmd2_status;
+	switch (cmd2_pid) {
+	case ERROR:
+		DIE(close(pipe_channel[READ]) != SUCCESS, "close");
+		DIE(close(pipe_channel[WRITE]) != SUCCESS, "close");
+		DIE(true, "fork");
+
+		// execution of the final process failed, returning failure code 1
+		return true;
+	case CHILD:
+		// cmd1 output redirection mechanism to cmd2 input
+		DIE(close(pipe_channel[WRITE]) != SUCCESS, "close");
+		dup2(pipe_channel[READ], STDIN_FILENO);
+		DIE(close(pipe_channel[READ]) != SUCCESS, "close");
+
+		exit(parse_command(cmd2, level, father));
+	}
+
+	DIE(close(pipe_channel[READ]) != SUCCESS, "close");
+	DIE(close(pipe_channel[WRITE]) != SUCCESS, "close");
+
+	// firstly, wait for the execution of cmd1, then for the cmd2 with special input
+	DIE(waitpid(cmd1_pid, &cmd1_status, DEFAULT_OPTIONS) == ERROR, "waitpit");
+	DIE(waitpid(cmd2_pid, &cmd2_status, DEFAULT_OPTIONS) == ERROR, "waitpid");
+
+	/* only the cmd2 exit code matters, taking the negated value of the result code,
+	because run_on_pipe succeeds when returning false (success code) */
+	return !(__WIFEXITED(cmd2_status) && __WEXITSTATUS(cmd2_status) == SUCCESS);
 }
 
 /**
@@ -228,7 +277,7 @@ int parse_command(command_t *c, int level, command_t *father)
 		break;
 
 	case OP_PARALLEL:
-		cmd_exit = run_in_parallel(c->cmd1, c->cmd2, level + 1, c);
+		cmd_exit = !run_in_parallel(c->cmd1, c->cmd2, level + 1, c);
 		break;
 
 	case OP_CONDITIONAL_NZERO:
@@ -239,7 +288,7 @@ int parse_command(command_t *c, int level, command_t *father)
 
 	case OP_CONDITIONAL_ZERO:
 		cmd_exit = parse_command(c->cmd1, level + 1, c);
-		if (cmd_exit == 0)
+		if (cmd_exit == SUCCESS)
 			cmd_exit = parse_command(c->cmd2, level + 1, c);
 		break;
 
