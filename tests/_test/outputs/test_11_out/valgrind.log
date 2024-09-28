@@ -1,0 +1,41 @@
+==75692== Memcheck, a memory error detector
+==75692== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==75692== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==75692== Command: mini-shell
+==75692== Parent PID: 75691
+==75692== 
+==75692== 
+==75692== FILE DESCRIPTORS: 8 open at exit.
+==75692== Open file descriptor 27: /home/pclp/.vscode-server/data/logs/20240108T080421/network.log
+==75692==    <inherited from parent>
+==75692== 
+==75692== Open file descriptor 23: /home/pclp/.vscode-server/data/logs/20240108T080421/remoteagent.log
+==75692==    <inherited from parent>
+==75692== 
+==75692== Open file descriptor 20: /dev/ptmx
+==75692==    <inherited from parent>
+==75692== 
+==75692== Open file descriptor 19: /home/pclp/.vscode-server/data/logs/20240108T080421/ptyhost.log
+==75692==    <inherited from parent>
+==75692== 
+==75692== Open file descriptor 3: /home/pclp/assignment-mini-shell/tests/_test/outputs/test_11_out/valgrind.log
+==75692==    <inherited from parent>
+==75692== 
+==75692== Open file descriptor 2: /dev/null
+==75692==    <inherited from parent>
+==75692== 
+==75692== Open file descriptor 1: /dev/null
+==75692==    <inherited from parent>
+==75692== 
+==75692== Open file descriptor 0: /home/pclp/assignment-mini-shell/tests/_test/outputs/test_11.in
+==75692==    <inherited from parent>
+==75692== 
+==75692== 
+==75692== HEAP SUMMARY:
+==75692==     in use at exit: 0 bytes in 0 blocks
+==75692==   total heap usage: 108 allocs, 108 frees, 12,987 bytes allocated
+==75692== 
+==75692== All heap blocks were freed -- no leaks are possible
+==75692== 
+==75692== For lists of detected and suppressed errors, rerun with: -s
+==75692== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

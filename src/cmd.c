@@ -153,7 +153,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		DIE(true, "fork");
 		break;
 	case CHILD:
-		;	// label error
+		;	// label error solved
 		int stop = 0;
 
 		do_redirect(true, s->in, STDIN_FILENO, false, true, NULL, JUNK_VALUE, false, &stop);
@@ -196,7 +196,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 	 * Running the commands in parallel will result in the following process tree:
 	 * initial_process - cmd1_process -> exit
 	 *				   - initial process - cmd2_process -> exit
-	 *									 - initial process -> wait for cmd1, cmd 2 and return
+	 *									 - initial process -> wait for cmd1, cmd2 and return
 	 */
 
 	pid_t cmd1_pid = fork();
@@ -228,7 +228,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 		DIE(waitpid(cmd2_pid, &cmd2_status, DEFAULT_OPTIONS) == ERROR, "waitpid");
 	}
 
-	// both cmd1 and cmd2 result code counts to the final result code
+	// both cmd1 and cmd2 result codes count to the final result code
 	return !(__WIFEXITED(cmd1_status) && __WEXITSTATUS(cmd1_status) == SUCCESS
 		   && __WIFEXITED(cmd2_status) && __WEXITSTATUS(cmd2_status) == SUCCESS);
 }
