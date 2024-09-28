@@ -1,3 +1,5 @@
+# Copyright 2023 Toma-Ioan Dumitrescu
+
 # Minishell
 
 ## Objectives
