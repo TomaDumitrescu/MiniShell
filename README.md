@@ -61,7 +61,6 @@ The following example shows how the minishell implemented by you should behave.
 > ./sum 2 4 1
 7
 ```
-
 If the executable is located at the `/home/student/sum` absolute path, the following example should also be valid.
 
 ```sh
